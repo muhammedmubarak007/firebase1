@@ -30,6 +30,7 @@ const firebaseConfig = {
     appId: "1:974193542526:web:4f7679ff82a59f622c5f2f"
 };
 
+
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -77,16 +78,26 @@ function showAdminPanel() {
     adminContainer.style.display = 'block';
 }
 
+function verifyUserAuthenticated() {
+    if (!currentUser) {
+        throw new Error("User not authenticated");
+    }
+}
+
 // Item Management Functions
 async function saveItemToFirestore(id, name, price, description) {
+    verifyUserAuthenticated();
+    
     const itemData = {
         name,
         price,
         description: description || null,
-        userId: currentUser.uid,
+        userId: currentUser.uid, // Critical for security
         updatedAt: serverTimestamp()
     };
     
+    console.log("Saving item data:", { id, ...itemData });
+
     if (id) {
         await updateDoc(doc(db, 'menuItems', id), itemData);
     } else {
@@ -96,15 +107,20 @@ async function saveItemToFirestore(id, name, price, description) {
 }
 
 async function deleteItem(itemId) {
+    verifyUserAuthenticated();
+    
     if (!confirm('Are you sure you want to delete this item?')) return;
     
     try {
         const docRef = doc(db, 'menuItems', itemId);
         const docSnap = await getDoc(docRef);
         
-        if (!docSnap.exists() || docSnap.data().userId !== currentUser.uid) {
-            alert("You can only delete your own items");
-            return;
+        if (!docSnap.exists()) {
+            throw new Error("Item not found");
+        }
+        
+        if (docSnap.data().userId !== currentUser.uid) {
+            throw new Error("You can only delete your own items");
         }
         
         await deleteDoc(docRef);
@@ -117,17 +133,23 @@ async function deleteItem(itemId) {
 }
 
 async function editItem(id) {
+    verifyUserAuthenticated();
+    
     try {
         const docRef = doc(db, 'menuItems', id);
         const docSnap = await getDoc(docRef);
         
-        if (!docSnap.exists() || docSnap.data().userId !== currentUser.uid) {
-            alert("You can only edit your own items");
-            return;
+        if (!docSnap.exists()) {
+            throw new Error("Item not found");
         }
         
         const item = docSnap.data();
-        itemIdInput.value = id;
+        
+        if (item.userId !== currentUser.uid) {
+            throw new Error("You can only edit your own items");
+        }
+        
+        document.getElementById('item-id').value = id;
         document.getElementById('item-name').value = item.name;
         document.getElementById('item-price').value = item.price;
         document.getElementById('item-description').value = item.description || '';
@@ -190,15 +212,15 @@ async function loadUserItems() {
         });
 
     } catch (error) {
-        console.error("Load error:", {
-            error: error.message,
+        console.error("Load error details:", {
+            message: error.message,
             code: error.code,
             user: currentUser?.uid
         });
         itemsList.innerHTML = `
             <tr>
                 <td colspan="4" class="error-message text-center py-4">
-                    Error loading items. ${error.message}
+                    Error loading items: ${error.message}
                 </td>
             </tr>
         `;
@@ -209,35 +231,29 @@ async function loadUserItems() {
 async function handleItemSubmit(e) {
     e.preventDefault();
     
-    const name = document.getElementById('item-name').value.trim();
-    const price = parseFloat(document.getElementById('item-price').value);
-    const description = document.getElementById('item-description').value.trim();
-    
-    if (!name || isNaN(price)) {
-        alert('Name and valid price are required');
-        return;
-    }
-    
     try {
-        if (isEditing) {
-            await updateItem(itemIdInput.value, name, price, description);
-        } else {
-            await addItem(name, price, description);
+        verifyUserAuthenticated();
+        
+        const name = document.getElementById('item-name').value.trim();
+        const price = parseFloat(document.getElementById('item-price').value);
+        const description = document.getElementById('item-description').value.trim();
+        
+        if (!name || isNaN(price)) {
+            throw new Error("Name and valid price are required");
         }
+        
+        if (isEditing) {
+            await saveItemToFirestore(itemIdInput.value, name, price, description);
+        } else {
+            await saveItemToFirestore(null, name, price, description);
+        }
+        
         resetForm();
         await loadUserItems();
     } catch (error) {
         console.error("Submit error:", error);
-        alert('Error saving item: ' + error.message);
+        alert('Operation failed: ' + error.message);
     }
-}
-
-async function addItem(name, price, description) {
-    await saveItemToFirestore(null, name, price, description);
-}
-
-async function updateItem(id, name, price, description) {
-    await saveItemToFirestore(id, name, price, description);
 }
 
 // Auth Handlers
@@ -273,6 +289,7 @@ function setupEventListeners() {
 
 function init() {
     onAuthStateChanged(auth, (user) => {
+        console.log("Auth state changed. User:", user ? user.uid : "None");
         if (user) {
             currentUser = user;
             userEmailDisplay.textContent = user.email;
