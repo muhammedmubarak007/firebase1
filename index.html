@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Firebase Form Submission</title>
+    <title>Firestore Form Submission</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -61,10 +61,16 @@
             border-top: 1px solid #eee;
             padding-top: 1rem;
         }
+        .submission-card {
+            background: #f8f9fa;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
-    <h1>Contact Form</h1>
+    <h1>Contact Form (Firestore)</h1>
     
     <form id="contactForm">
         <div class="form-group">
@@ -88,7 +94,7 @@
     
     <div id="submissions">
         <h2>Recent Submissions</h2>
-        <ul id="submissionList"></ul>
+        <div id="submissionList"></div>
     </div>
 
     <script type="module" src="app.js"></script>
