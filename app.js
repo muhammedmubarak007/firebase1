@@ -1,4 +1,3 @@
-// Import Firebase modules
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
 import { 
     getAuth, 
@@ -19,12 +18,6 @@ import {
     query,
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
-import {
-    getStorage,
-    ref,
-    uploadBytes,
-    getDownloadURL
-} from "https://www.gstatic.com/firebasejs/9.22.2/firebase-storage.js";
 
 // Firebase configuration
 const firebaseConfig = {
@@ -40,9 +33,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const storage = getStorage(app);
 
-// DOM Elements (same as before)
+// DOM Elements
 const authContainer = document.getElementById('auth-container');
 const adminContainer = document.getElementById('admin-container');
 const loginForm = document.getElementById('login-form');
@@ -53,12 +45,10 @@ const cancelEditBtn = document.getElementById('cancel-edit');
 const formTitle = document.getElementById('form-title');
 const submitBtn = document.getElementById('submit-btn');
 const itemIdInput = document.getElementById('item-id');
-const imagePreview = document.getElementById('image-preview');
 
 // State
 let currentUser = null;
 let isEditing = false;
-let selectedFile = null;
 
 // Initialize the app
 function init() {
@@ -78,7 +68,6 @@ function init() {
     logoutBtn.addEventListener('click', handleLogout);
     itemForm.addEventListener('submit', handleItemSubmit);
     cancelEditBtn.addEventListener('click', cancelEdit);
-    document.getElementById('item-image').addEventListener('change', handleImageSelect);
 }
 
 // Show authentication panel
@@ -118,14 +107,14 @@ async function handleLogout() {
 
 // Load items from Firestore
 async function loadItems() {
-    itemsList.innerHTML = '<tr><td colspan="5" class="text-center">Loading...</td></tr>';
+    itemsList.innerHTML = '<tr><td colspan="4" class="text-center">Loading...</td></tr>';
     
     try {
         const q = query(collection(db, 'menuItems'), orderBy('name'));
         const querySnapshot = await getDocs(q);
         
         if (querySnapshot.empty) {
-            itemsList.innerHTML = '<tr><td colspan="5" class="text-center">No items found</td></tr>';
+            itemsList.innerHTML = '<tr><td colspan="4" class="text-center">No items found</td></tr>';
             return;
         }
         
@@ -134,7 +123,6 @@ async function loadItems() {
             const item = doc.data();
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td><img src="${item.imageUrl || 'https://via.placeholder.com/50'}" alt="${item.name}" style="width: 50px; height: 50px; object-fit: cover;"></td>
                 <td>${item.name}</td>
                 <td>$${item.price.toFixed(2)}</td>
                 <td>${item.description.substring(0, 50)}${item.description.length > 50 ? '...' : ''}</td>
@@ -155,27 +143,12 @@ async function loadItems() {
             btn.addEventListener('click', () => deleteItem(btn.dataset.id));
         });
     } catch (error) {
-        itemsList.innerHTML = '<tr><td colspan="5" class="text-center text-danger">Error loading items</td></tr>';
+        itemsList.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Error loading items</td></tr>';
         console.error('Error loading items: ', error);
     }
 }
 
-// Handle image selection (same as before)
-function handleImageSelect(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    selectedFile = file;
-    
-    // Show preview
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        imagePreview.innerHTML = `<img src="${e.target.result}" class="preview-image" alt="Preview">`;
-    };
-    reader.readAsDataURL(file);
-}
-
-// Handle item form submission (same as before)
+// Handle item form submission
 function handleItemSubmit(e) {
     e.preventDefault();
     
@@ -198,13 +171,7 @@ function handleItemSubmit(e) {
 // Add new item to Firestore
 async function addItem(name, price, description) {
     try {
-        let imageUrl = null;
-        
-        if (selectedFile) {
-            imageUrl = await uploadImage(selectedFile);
-        }
-        
-        await saveItemToFirestore(null, name, price, description, imageUrl);
+        await saveItemToFirestore(null, name, price, description);
         resetForm();
         loadItems();
     } catch (error) {
@@ -216,20 +183,7 @@ async function addItem(name, price, description) {
 // Update existing item
 async function updateItem(id, name, price, description) {
     try {
-        let imageUrl = null;
-        
-        if (selectedFile) {
-            imageUrl = await uploadImage(selectedFile);
-        } else {
-            // Keep existing image if no new one was selected
-            const docRef = doc(db, 'menuItems', id);
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                imageUrl = docSnap.data().imageUrl;
-            }
-        }
-        
-        await saveItemToFirestore(id, name, price, description, imageUrl);
+        await saveItemToFirestore(id, name, price, description);
         resetForm();
         loadItems();
     } catch (error) {
@@ -238,25 +192,14 @@ async function updateItem(id, name, price, description) {
     }
 }
 
-// Upload image to Firebase Storage
-async function uploadImage(file) {
-    const storageRef = ref(storage, 'menuItems/' + Date.now() + '_' + file.name);
-    const snapshot = await uploadBytes(storageRef, file);
-    return await getDownloadURL(snapshot.ref);
-}
-
 // Save item data to Firestore
-async function saveItemToFirestore(id, name, price, description, imageUrl) {
+async function saveItemToFirestore(id, name, price, description) {
     const itemData = {
         name,
         price,
         description,
         updatedAt: serverTimestamp()
     };
-    
-    if (imageUrl) {
-        itemData.imageUrl = imageUrl;
-    }
     
     if (id) {
         // Update existing document
@@ -286,19 +229,11 @@ async function editItem(id) {
         document.getElementById('item-price').value = item.price;
         document.getElementById('item-description').value = item.description;
         
-        // Show image preview if exists
-        if (item.imageUrl) {
-            imagePreview.innerHTML = `<img src="${item.imageUrl}" class="preview-image" alt="Preview">`;
-        } else {
-            imagePreview.innerHTML = '';
-        }
-        
         // Update UI for editing
         isEditing = true;
         formTitle.textContent = 'Edit Item';
         submitBtn.textContent = 'Update Item';
         cancelEditBtn.style.display = 'block';
-        selectedFile = null;
         
         // Scroll to form
         document.getElementById('item-form').scrollIntoView({ behavior: 'smooth' });
@@ -321,18 +256,16 @@ async function deleteItem(id) {
     }
 }
 
-// Cancel edit and reset form (same as before)
+// Cancel edit and reset form
 function cancelEdit() {
     resetForm();
 }
 
-// Reset form to initial state (same as before)
+// Reset form to initial state
 function resetForm() {
     itemForm.reset();
     itemIdInput.value = '';
-    imagePreview.innerHTML = '';
     isEditing = false;
-    selectedFile = null;
     formTitle.textContent = 'Add New Item';
     submitBtn.textContent = 'Add Item';
     cancelEditBtn.style.display = 'none';
