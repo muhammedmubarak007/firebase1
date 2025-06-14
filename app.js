@@ -4,13 +4,13 @@ import { getDatabase, ref, push, set } from "https://www.gstatic.com/firebasejs/
 const firebaseConfig = {
     apiKey: "AIzaSyDVszBM0A89MND9nnuLQyyfqEqUYgFvXG0",
     authDomain: "fir-68576.firebaseapp.com",
+    databaseURL: "https://fir-68576-default-rtdb.firebaseio.com", // THIS WAS MISSING
     projectId: "fir-68576",
     storageBucket: "fir-68576.firebasestorage.app",
     messagingSenderId: "974193542526",
     appId: "1:974193542526:web:4f7679ff82a59f622c5f2f",
     measurementId: "G-63G58BYVHS"
-  };
-
+};
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
