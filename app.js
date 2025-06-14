@@ -7,10 +7,12 @@ import {
     query,
     orderBy,
     limit,
-    onSnapshot
+    onSnapshot,
+    doc,
+    deleteDoc
 } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
-// Firebase configuration (no databaseURL needed for Firestore)
+// Firebase configuration
 const firebaseConfig = {
     apiKey: "AIzaSyDVszBM0A89MND9nnuLQyyfqEqUYgFvXG0",
     authDomain: "fir-68576.firebaseapp.com",
@@ -34,33 +36,21 @@ const submissionList = document.getElementById('submissionList');
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
     
-    // Get form values
     const name = document.getElementById('name').value.trim();
     const email = document.getElementById('email').value.trim();
     const message = document.getElementById('message').value.trim();
     
-    // Validate inputs
-    if (!name || !email || !message) {
-        showStatus('All fields are required', 'error');
-        return;
-    }
-
-    if (!validateEmail(email)) {
-        showStatus('Please enter a valid email', 'error');
-        return;
-    }
+    if (!validateForm(name, email, message)) return;
 
     try {
-        // Show loading state
         submitBtn.disabled = true;
         showStatus('Submitting...', '');
         
-        // Add document to Firestore
         await addDoc(collection(db, "submissions"), {
             name,
             email,
             message,
-            timestamp: serverTimestamp() // Firebase server-side timestamp
+            timestamp: serverTimestamp()
         });
         
         showStatus('Submission successful!', 'success');
@@ -73,16 +63,66 @@ form.addEventListener('submit', async (e) => {
     }
 });
 
-// Display status messages
-function showStatus(message, type) {
-    statusDiv.textContent = message;
-    statusDiv.className = type || '';
+// Form validation
+function validateForm(name, email, message) {
+    if (!name || !email || !message) {
+        showStatus('All fields are required', 'error');
+        return false;
+    }
+
+    if (!validateEmail(email)) {
+        showStatus('Please enter a valid email', 'error');
+        return false;
+    }
+
+    if (name.length < 2) {
+        showStatus('Name must be at least 2 characters', 'error');
+        return false;
+    }
+
+    return true;
 }
 
 // Email validation
 function validateEmail(email) {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return re.test(email);
+}
+
+// Display status messages
+function showStatus(message, type) {
+    statusDiv.textContent = message;
+    statusDiv.className = type || '';
+    if (type) setTimeout(() => statusDiv.className = '', 3000);
+}
+
+// Create submission card with delete button
+function createSubmissionCard(doc) {
+    const data = doc.data();
+    const card = document.createElement('div');
+    card.className = 'submission-card';
+    card.dataset.id = doc.id;
+    
+    card.innerHTML = `
+        <h3>${data.name}</h3>
+        <p><strong>Email:</strong> ${data.email}</p>
+        <p><strong>Message:</strong> ${data.message}</p>
+        <small>${data.timestamp?.toDate().toLocaleString() || 'Pending timestamp'}</small>
+        <button class="delete-btn">Delete</button>
+    `;
+    
+    card.querySelector('.delete-btn').addEventListener('click', async () => {
+        if (confirm('Delete this submission?')) {
+            try {
+                await deleteDoc(doc.ref);
+            } catch (error) {
+                console.error('Error deleting document:', error);
+                showStatus('Error deleting submission', 'error');
+            }
+        }
+    });
+    
+    return card;
 }
 
 // Real-time submission display
@@ -98,20 +138,14 @@ function setupRealtimeListener() {
         
         if (!querySnapshot.empty) {
             querySnapshot.forEach((doc) => {
-                const data = doc.data();
-                const card = document.createElement('div');
-                card.className = 'submission-card';
-                card.innerHTML = `
-                    <h3>${data.name}</h3>
-                    <p><strong>Email:</strong> ${data.email}</p>
-                    <p><strong>Message:</strong> ${data.message}</p>
-                    <small>${data.timestamp?.toDate().toLocaleString() || 'Pending timestamp'}</small>
-                `;
-                submissionList.appendChild(card);
+                submissionList.appendChild(createSubmissionCard(doc));
             });
         } else {
             submissionList.innerHTML = '<p>No submissions yet</p>';
         }
+    }, (error) => {
+        console.error("Error getting documents: ", error);
+        showStatus('Error loading submissions', 'error');
     });
 }
 
