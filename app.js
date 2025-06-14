@@ -20,14 +20,14 @@ import {
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
-// Firebase configuration - REPLACE WITH YOUR CONFIG
+// Firebase configuration
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_AUTH_DOMAIN",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_STORAGE_BUCKET",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: "AIzaSyDVszBM0A89MND9nnuLQyyfqEqUYgFvXG0",
+    authDomain: "fir-68576.firebaseapp.com",
+    projectId: "fir-68576",
+    storageBucket: "fir-68576.firebasestorage.app",
+    messagingSenderId: "974193542526",
+    appId: "1:974193542526:web:4f7679ff82a59f622c5f2f"
 };
 
 // Initialize Firebase
@@ -52,68 +52,104 @@ const userEmailDisplay = document.getElementById('user-email');
 let currentUser = null;
 let isEditing = false;
 
-// Initialize the app
-function init() {
-    // Check auth state
-    onAuthStateChanged(auth, (user) => {
-        if (user) {
-            currentUser = user;
-            userEmailDisplay.textContent = user.email;
-            showAdminPanel();
-            loadUserItems();
-        } else {
-            showAuthPanel();
-        }
-    });
-
-    // Event listeners
-    loginForm.addEventListener('submit', handleLogin);
-    logoutBtn.addEventListener('click', handleLogout);
-    itemForm.addEventListener('submit', handleItemSubmit);
-    cancelEditBtn.addEventListener('click', cancelEdit);
+// Helper Functions
+function resetForm() {
+    itemForm.reset();
+    itemIdInput.value = '';
+    isEditing = false;
+    formTitle.textContent = 'Add New Item';
+    submitBtn.textContent = 'Add Item';
+    cancelEditBtn.style.display = 'none';
 }
 
-// Show authentication panel
+function cancelEdit() {
+    resetForm();
+}
+
 function showAuthPanel() {
     authContainer.style.display = 'block';
     adminContainer.style.display = 'none';
+    resetForm();
 }
 
-// Show admin panel
 function showAdminPanel() {
     authContainer.style.display = 'none';
     adminContainer.style.display = 'block';
 }
 
-// Handle login
-async function handleLogin(e) {
-    e.preventDefault();
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-
-    try {
-        await signInWithEmailAndPassword(auth, email, password);
-    } catch (error) {
-        alert('Login failed: ' + error.message);
+// Item Management Functions
+async function saveItemToFirestore(id, name, price, description) {
+    const itemData = {
+        name,
+        price,
+        description: description || null,
+        userId: currentUser.uid,
+        updatedAt: serverTimestamp()
+    };
+    
+    if (id) {
+        await updateDoc(doc(db, 'menuItems', id), itemData);
+    } else {
+        itemData.createdAt = serverTimestamp();
+        await addDoc(collection(db, 'menuItems'), itemData);
     }
 }
 
-// Handle logout
-async function handleLogout() {
+async function deleteItem(itemId) {
+    if (!confirm('Are you sure you want to delete this item?')) return;
+    
     try {
-        await signOut(auth);
-        resetForm();
+        const docRef = doc(db, 'menuItems', itemId);
+        const docSnap = await getDoc(docRef);
+        
+        if (!docSnap.exists() || docSnap.data().userId !== currentUser.uid) {
+            alert("You can only delete your own items");
+            return;
+        }
+        
+        await deleteDoc(docRef);
+        await loadUserItems();
+        alert("Item deleted successfully");
     } catch (error) {
-        alert('Logout failed: ' + error.message);
+        console.error("Delete error:", error);
+        alert("Failed to delete item: " + error.message);
     }
 }
 
-// Load items for the current user
+async function editItem(id) {
+    try {
+        const docRef = doc(db, 'menuItems', id);
+        const docSnap = await getDoc(docRef);
+        
+        if (!docSnap.exists() || docSnap.data().userId !== currentUser.uid) {
+            alert("You can only edit your own items");
+            return;
+        }
+        
+        const item = docSnap.data();
+        itemIdInput.value = id;
+        document.getElementById('item-name').value = item.name;
+        document.getElementById('item-price').value = item.price;
+        document.getElementById('item-description').value = item.description || '';
+        
+        isEditing = true;
+        formTitle.textContent = 'Edit Item';
+        submitBtn.textContent = 'Update Item';
+        cancelEditBtn.style.display = 'block';
+    } catch (error) {
+        console.error("Edit error:", error);
+        alert("Error editing item: " + error.message);
+    }
+}
+
 async function loadUserItems() {
-    if (!currentUser) return;
+    if (!currentUser) {
+        itemsList.innerHTML = '<tr><td colspan="4" class="loading-message">Please login to view items</td></tr>';
+        return;
+    }
     
-    itemsList.innerHTML = '<tr><td colspan="4" class="text-center">Loading your items...</td></tr>';
-    
+    itemsList.innerHTML = '<tr><td colspan="4" class="loading-message">Loading your items...</td></tr>';
+
     try {
         const q = query(
             collection(db, 'menuItems'),
@@ -123,13 +159,12 @@ async function loadUserItems() {
         
         const querySnapshot = await getDocs(q);
         
-        itemsList.innerHTML = '';
-        
         if (querySnapshot.empty) {
-            itemsList.innerHTML = '<tr><td colspan="4" class="text-center">You have no menu items yet</td></tr>';
+            itemsList.innerHTML = '<tr><td colspan="4" class="loading-message">No items found. Add your first item!</td></tr>';
             return;
         }
 
+        itemsList.innerHTML = '';
         querySnapshot.forEach((doc) => {
             const item = doc.data();
             const row = document.createElement('tr');
@@ -144,8 +179,8 @@ async function loadUserItems() {
             `;
             itemsList.appendChild(row);
         });
-        
-        // Add event listeners to edit and delete buttons
+
+        // Add event listeners
         document.querySelectorAll('.edit-btn').forEach(btn => {
             btn.addEventListener('click', () => editItem(btn.dataset.id));
         });
@@ -153,155 +188,102 @@ async function loadUserItems() {
         document.querySelectorAll('.delete-btn').forEach(btn => {
             btn.addEventListener('click', () => deleteItem(btn.dataset.id));
         });
-        
+
     } catch (error) {
-        console.error('Error loading items:', error);
-        itemsList.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Error loading your items</td></tr>';
+        console.error("Load error:", {
+            error: error.message,
+            code: error.code,
+            user: currentUser?.uid
+        });
+        itemsList.innerHTML = `
+            <tr>
+                <td colspan="4" class="error-message text-center py-4">
+                    Error loading items. ${error.message}
+                </td>
+            </tr>
+        `;
     }
 }
 
-// Handle item form submission
-function handleItemSubmit(e) {
+// Form Handlers
+async function handleItemSubmit(e) {
     e.preventDefault();
     
-    const name = document.getElementById('item-name').value;
+    const name = document.getElementById('item-name').value.trim();
     const price = parseFloat(document.getElementById('item-price').value);
-    const description = document.getElementById('item-description').value;
+    const description = document.getElementById('item-description').value.trim();
     
     if (!name || isNaN(price)) {
-        alert('Name and price are required');
+        alert('Name and valid price are required');
         return;
     }
     
-    if (isEditing) {
-        updateItem(itemIdInput.value, name, price, description);
-    } else {
-        addItem(name, price, description);
+    try {
+        if (isEditing) {
+            await updateItem(itemIdInput.value, name, price, description);
+        } else {
+            await addItem(name, price, description);
+        }
+        resetForm();
+        await loadUserItems();
+    } catch (error) {
+        console.error("Submit error:", error);
+        alert('Error saving item: ' + error.message);
     }
 }
 
-// Add new item to Firestore
 async function addItem(name, price, description) {
-    try {
-        await saveItemToFirestore(null, name, price, description);
-        resetForm();
-        loadUserItems();
-    } catch (error) {
-        console.error('Error adding item:', error);
-        alert('Error adding item: ' + error.message);
-    }
+    await saveItemToFirestore(null, name, price, description);
 }
 
-// Update existing item
 async function updateItem(id, name, price, description) {
+    await saveItemToFirestore(id, name, price, description);
+}
+
+// Auth Handlers
+async function handleLogin(e) {
+    e.preventDefault();
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
     try {
-        await saveItemToFirestore(id, name, price, description);
-        resetForm();
-        loadUserItems();
+        await signInWithEmailAndPassword(auth, email, password);
     } catch (error) {
-        console.error('Error updating item:', error);
-        alert('Error updating item: ' + error.message);
+        console.error("Login error:", error);
+        alert('Login failed: ' + error.message);
     }
 }
 
-// Save item data to Firestore
-async function saveItemToFirestore(id, name, price, description) {
-    const itemData = {
-        name,
-        price,
-        description: description || null,
-        userId: currentUser.uid,
-        updatedAt: serverTimestamp()
-    };
-    
-    if (id) {
-        // Update existing document
-        const docRef = doc(db, 'menuItems', id);
-        await updateDoc(docRef, itemData);
-    } else {
-        // Add new document
-        itemData.createdAt = serverTimestamp();
-        await addDoc(collection(db, 'menuItems'), itemData);
-    }
-}
-
-// Delete item with confirmation and ownership check
-async function deleteItem(id) {
-    if (!confirm('Are you sure you want to delete this item?')) return;
-    
+async function handleLogout() {
     try {
-        // Verify the item belongs to current user
-        const docRef = doc(db, 'menuItems', id);
-        const docSnap = await getDoc(docRef);
-        
-        if (!docSnap.exists()) {
-            alert('Item not found');
-            return;
-        }
-        
-        if (docSnap.data().userId !== currentUser.uid) {
-            alert('You can only delete your own items');
-            return;
-        }
-        
-        await deleteDoc(docRef);
-        loadUserItems();
-        alert('Item deleted successfully');
+        await signOut(auth);
     } catch (error) {
-        console.error('Error deleting item:', error);
-        alert('Error deleting item: ' + error.message);
+        console.error("Logout error:", error);
+        alert('Logout failed: ' + error.message);
     }
 }
 
-// Edit item
-async function editItem(id) {
-    try {
-        const docRef = doc(db, 'menuItems', id);
-        const docSnap = await getDoc(docRef);
-        
-        if (!docSnap.exists()) {
-            alert('Item not found');
-            return;
+// Initialize App
+function setupEventListeners() {
+    loginForm.addEventListener('submit', handleLogin);
+    logoutBtn.addEventListener('click', handleLogout);
+    itemForm.addEventListener('submit', handleItemSubmit);
+    cancelEditBtn.addEventListener('click', cancelEdit);
+}
+
+function init() {
+    onAuthStateChanged(auth, (user) => {
+        if (user) {
+            currentUser = user;
+            userEmailDisplay.textContent = user.email;
+            showAdminPanel();
+            loadUserItems();
+        } else {
+            showAuthPanel();
         }
-        
-        const item = docSnap.data();
-        
-        // Verify ownership
-        if (item.userId !== currentUser.uid) {
-            alert('You can only edit your own items');
-            return;
-        }
-        
-        document.getElementById('item-id').value = id;
-        document.getElementById('item-name').value = item.name;
-        document.getElementById('item-price').value = item.price;
-        document.getElementById('item-description').value = item.description || '';
-        
-        // Update UI for editing
-        isEditing = true;
-        formTitle.textContent = 'Edit Item';
-        submitBtn.textContent = 'Update Item';
-        cancelEditBtn.style.display = 'block';
-    } catch (error) {
-        console.error('Error getting item:', error);
-        alert('Error getting item: ' + error.message);
-    }
+    });
+
+    setupEventListeners();
 }
 
-// Cancel edit and reset form
-function cancelEdit() {
-    resetForm();
-}
-
-// Reset form to initial state
-function resetForm() {
-    itemForm.reset();
-    itemIdInput.value = '';
-    isEditing = false;
-    formTitle.textContent = 'Add New Item';
-    submitBtn.textContent = 'Add Item';
-    cancelEditBtn.style.display = 'none';
-}
-
-// Initialize the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', init);
