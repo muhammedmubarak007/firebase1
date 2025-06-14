@@ -14,8 +14,8 @@ import {
     addDoc,
     updateDoc,
     deleteDoc,
-    orderBy,
     query,
+    where,
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
@@ -28,6 +28,7 @@ const firebaseConfig = {
     messagingSenderId: "974193542526",
     appId: "1:974193542526:web:4f7679ff82a59f622c5f2f"
 };
+
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -45,6 +46,7 @@ const cancelEditBtn = document.getElementById('cancel-edit');
 const formTitle = document.getElementById('form-title');
 const submitBtn = document.getElementById('submit-btn');
 const itemIdInput = document.getElementById('item-id');
+const userEmailDisplay = document.getElementById('user-email');
 
 // State
 let currentUser = null;
@@ -56,8 +58,9 @@ function init() {
     onAuthStateChanged(auth, (user) => {
         if (user) {
             currentUser = user;
+            userEmailDisplay.textContent = user.email;
             showAdminPanel();
-            loadItems();
+            loadUserItems(user.uid);
         } else {
             showAuthPanel();
         }
@@ -105,16 +108,21 @@ async function handleLogout() {
     }
 }
 
-// Load items from Firestore
-async function loadItems() {
-    itemsList.innerHTML = '<tr><td colspan="4" class="text-center">Loading...</td></tr>';
+// Load items for the current user only
+async function loadUserItems(userId) {
+    itemsList.innerHTML = '<tr><td colspan="4" class="text-center">Loading your items...</td></tr>';
     
     try {
-        const q = query(collection(db, 'menuItems'), orderBy('name'));
+        const q = query(
+            collection(db, 'menuItems'),
+            where("userId", "==", userId),
+            orderBy("createdAt", "desc")
+        );
+        
         const querySnapshot = await getDocs(q);
         
         if (querySnapshot.empty) {
-            itemsList.innerHTML = '<tr><td colspan="4" class="text-center">No items found</td></tr>';
+            itemsList.innerHTML = '<tr><td colspan="4" class="text-center">You have no items yet</td></tr>';
             return;
         }
         
@@ -125,7 +133,7 @@ async function loadItems() {
             row.innerHTML = `
                 <td>${item.name}</td>
                 <td>$${item.price.toFixed(2)}</td>
-                <td>${item.description.substring(0, 50)}${item.description.length > 50 ? '...' : ''}</td>
+                <td>${item.description || '-'}</td>
                 <td>
                     <button class="btn btn-sm btn-warning edit-btn" data-id="${doc.id}">Edit</button>
                     <button class="btn btn-sm btn-danger delete-btn" data-id="${doc.id}">Delete</button>
@@ -143,7 +151,7 @@ async function loadItems() {
             btn.addEventListener('click', () => deleteItem(btn.dataset.id));
         });
     } catch (error) {
-        itemsList.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Error loading items</td></tr>';
+        itemsList.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Error loading your items</td></tr>';
         console.error('Error loading items: ', error);
     }
 }
@@ -156,8 +164,8 @@ function handleItemSubmit(e) {
     const price = parseFloat(document.getElementById('item-price').value);
     const description = document.getElementById('item-description').value;
     
-    if (!name || isNaN(price) || !description) {
-        alert('Please fill all fields correctly');
+    if (!name || isNaN(price)) {
+        alert('Name and price are required');
         return;
     }
     
@@ -168,12 +176,12 @@ function handleItemSubmit(e) {
     }
 }
 
-// Add new item to Firestore
+// Add new item to Firestore (with user ID)
 async function addItem(name, price, description) {
     try {
         await saveItemToFirestore(null, name, price, description);
         resetForm();
-        loadItems();
+        loadUserItems(currentUser.uid);
     } catch (error) {
         console.error('Error adding item: ', error);
         alert('Error adding item: ' + error.message);
@@ -185,19 +193,20 @@ async function updateItem(id, name, price, description) {
     try {
         await saveItemToFirestore(id, name, price, description);
         resetForm();
-        loadItems();
+        loadUserItems(currentUser.uid);
     } catch (error) {
         console.error('Error updating item: ', error);
         alert('Error updating item: ' + error.message);
     }
 }
 
-// Save item data to Firestore
+// Save item data to Firestore (with user reference)
 async function saveItemToFirestore(id, name, price, description) {
     const itemData = {
         name,
         price,
-        description,
+        description: description || null,
+        userId: currentUser.uid,
         updatedAt: serverTimestamp()
     };
     
@@ -224,10 +233,17 @@ async function editItem(id) {
         }
         
         const item = docSnap.data();
+        
+        // Verify the item belongs to current user
+        if (item.userId !== currentUser.uid) {
+            alert('You can only edit your own items');
+            return;
+        }
+        
         document.getElementById('item-id').value = id;
         document.getElementById('item-name').value = item.name;
         document.getElementById('item-price').value = item.price;
-        document.getElementById('item-description').value = item.description;
+        document.getElementById('item-description').value = item.description || '';
         
         // Update UI for editing
         isEditing = true;
@@ -243,13 +259,22 @@ async function editItem(id) {
     }
 }
 
-// Delete item
+// Delete item (with ownership check)
 async function deleteItem(id) {
     if (!confirm('Are you sure you want to delete this item?')) return;
     
     try {
-        await deleteDoc(doc(db, 'menuItems', id));
-        loadItems();
+        // First verify the item belongs to current user
+        const docRef = doc(db, 'menuItems', id);
+        const docSnap = await getDoc(docRef);
+        
+        if (!docSnap.exists() || docSnap.data().userId !== currentUser.uid) {
+            alert('You can only delete your own items');
+            return;
+        }
+        
+        await deleteDoc(docRef);
+        loadUserItems(currentUser.uid);
     } catch (error) {
         console.error('Error deleting item: ', error);
         alert('Error deleting item: ' + error.message);
