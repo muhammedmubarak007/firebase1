@@ -20,6 +20,8 @@
         .action-buttons { white-space: nowrap; }
         .loading-message { padding: 20px 0; text-align: center; }
         .error-message { color: #dc3545; }
+        .veg-icon { color: green; }
+        .nonveg-icon { color: red; }
     </style>
 </head>
 <body>
@@ -80,6 +82,21 @@
                             <label for="item-description" class="form-label">Description</label>
                             <textarea class="form-control" id="item-description" rows="3"></textarea>
                         </div>
+                        <div class="mb-3">
+                            <label class="form-label">Food Type*</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="item-type" id="item-type-veg" value="veg" checked>
+                                <label class="form-check-label" for="item-type-veg">
+                                    <i class="fas fa-leaf veg-icon"></i> Vegetarian
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="item-type" id="item-type-nonveg" value="nonveg">
+                                <label class="form-check-label" for="item-type-nonveg">
+                                    <i class="fas fa-drumstick-bite nonveg-icon"></i> Non-Vegetarian
+                                </label>
+                            </div>
+                        </div>
                         <div class="d-flex justify-content-end gap-2">
                             <button type="button" id="cancel-edit" class="btn btn-secondary" style="display: none;">Cancel</button>
                             <button type="submit" id="submit-btn" class="btn btn-primary">Save Item</button>
@@ -98,6 +115,7 @@
                         <table class="table table-hover">
                             <thead class="table-dark">
                                 <tr>
+                                    <th>Type</th>
                                     <th>Name</th>
                                     <th>Price</th>
                                     <th>Description</th>
@@ -106,7 +124,7 @@
                             </thead>
                             <tbody id="items-list">
                                 <tr>
-                                    <td colspan="4" class="loading-message">Please login to view items</td>
+                                    <td colspan="5" class="loading-message">Please login to view items</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -116,6 +134,8 @@
         </div>
     </div>
 
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script type="module" src="app.js"></script>
 </body>

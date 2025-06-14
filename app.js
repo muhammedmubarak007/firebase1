@@ -56,6 +56,8 @@ let isEditing = false;
 // Helper Functions
 function resetForm() {
     itemForm.reset();
+    // Reset to veg by default
+    document.getElementById('item-type-veg').checked = true;
     itemIdInput.value = '';
     isEditing = false;
     formTitle.textContent = 'Add New Item';
@@ -85,19 +87,18 @@ function verifyUserAuthenticated() {
 }
 
 // Item Management Functions
-async function saveItemToFirestore(id, name, price, description) {
+async function saveItemToFirestore(id, name, price, description, type) {
     verifyUserAuthenticated();
     
     const itemData = {
         name,
         price,
         description: description || null,
-        userId: currentUser.uid, // Critical for security
+        type: type || 'veg', // Default to veg if not specified
+        userId: currentUser.uid,
         updatedAt: serverTimestamp()
     };
     
-    console.log("Saving item data:", { id, ...itemData });
-
     if (id) {
         await updateDoc(doc(db, 'menuItems', id), itemData);
     } else {
@@ -154,6 +155,13 @@ async function editItem(id) {
         document.getElementById('item-price').value = item.price;
         document.getElementById('item-description').value = item.description || '';
         
+        // Set the correct food type
+        if (item.type === 'nonveg') {
+            document.getElementById('item-type-nonveg').checked = true;
+        } else {
+            document.getElementById('item-type-veg').checked = true;
+        }
+        
         isEditing = true;
         formTitle.textContent = 'Edit Item';
         submitBtn.textContent = 'Update Item';
@@ -164,13 +172,19 @@ async function editItem(id) {
     }
 }
 
+function getFoodTypeIcon(type) {
+    return type === 'veg' 
+        ? '<i class="fas fa-leaf veg-icon"></i>' 
+        : '<i class="fas fa-drumstick-bite nonveg-icon"></i>';
+}
+
 async function loadUserItems() {
     if (!currentUser) {
-        itemsList.innerHTML = '<tr><td colspan="4" class="loading-message">Please login to view items</td></tr>';
+        itemsList.innerHTML = '<tr><td colspan="5" class="loading-message">Please login to view items</td></tr>';
         return;
     }
     
-    itemsList.innerHTML = '<tr><td colspan="4" class="loading-message">Loading your items...</td></tr>';
+    itemsList.innerHTML = '<tr><td colspan="5" class="loading-message">Loading your items...</td></tr>';
 
     try {
         const q = query(
@@ -182,7 +196,7 @@ async function loadUserItems() {
         const querySnapshot = await getDocs(q);
         
         if (querySnapshot.empty) {
-            itemsList.innerHTML = '<tr><td colspan="4" class="loading-message">No items found. Add your first item!</td></tr>';
+            itemsList.innerHTML = '<tr><td colspan="5" class="loading-message">No items found. Add your first item!</td></tr>';
             return;
         }
 
@@ -191,6 +205,7 @@ async function loadUserItems() {
             const item = doc.data();
             const row = document.createElement('tr');
             row.innerHTML = `
+                <td>${getFoodTypeIcon(item.type)} ${item.type === 'veg' ? 'Veg' : 'Non-Veg'}</td>
                 <td>${item.name}</td>
                 <td>$${item.price.toFixed(2)}</td>
                 <td>${item.description || '-'}</td>
@@ -219,7 +234,7 @@ async function loadUserItems() {
         });
         itemsList.innerHTML = `
             <tr>
-                <td colspan="4" class="error-message text-center py-4">
+                <td colspan="5" class="error-message text-center py-4">
                     Error loading items: ${error.message}
                 </td>
             </tr>
@@ -237,15 +252,16 @@ async function handleItemSubmit(e) {
         const name = document.getElementById('item-name').value.trim();
         const price = parseFloat(document.getElementById('item-price').value);
         const description = document.getElementById('item-description').value.trim();
+        const type = document.querySelector('input[name="item-type"]:checked').value;
         
         if (!name || isNaN(price)) {
             throw new Error("Name and valid price are required");
         }
         
         if (isEditing) {
-            await saveItemToFirestore(itemIdInput.value, name, price, description);
+            await saveItemToFirestore(itemIdInput.value, name, price, description, type);
         } else {
-            await saveItemToFirestore(null, name, price, description);
+            await saveItemToFirestore(null, name, price, description, type);
         }
         
         resetForm();
