@@ -20,15 +20,16 @@ import {
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
-// Firebase Configuration
+// Firebase configuration
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_AUTH_DOMAIN",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_STORAGE_BUCKET",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: "AIzaSyDVszBM0A89MND9nnuLQyyfqEqUYgFvXG0",
+    authDomain: "fir-68576.firebaseapp.com",
+    projectId: "fir-68576",
+    storageBucket: "fir-68576.firebasestorage.app",
+    messagingSenderId: "974193542526",
+    appId: "1:974193542526:web:4f7679ff82a59f622c5f2f"
 };
+
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
