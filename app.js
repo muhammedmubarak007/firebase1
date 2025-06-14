@@ -29,7 +29,6 @@ const firebaseConfig = {
     appId: "1:974193542526:web:4f7679ff82a59f622c5f2f"
 };
 
-
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -48,13 +47,18 @@ const submitBtn = document.getElementById('submit-btn');
 const itemIdInput = document.getElementById('item-id');
 const userEmailDisplay = document.getElementById('user-email');
 
-// State
+// App State
 let currentUser = null;
 let isEditing = false;
 
-// Initialize the app
+// Initialize App
 function init() {
-    // Check auth state
+    setupAuthListener();
+    setupEventListeners();
+}
+
+// Auth State Listener
+function setupAuthListener() {
     onAuthStateChanged(auth, (user) => {
         if (user) {
             currentUser = user;
@@ -65,27 +69,29 @@ function init() {
             showAuthPanel();
         }
     });
+}
 
-    // Event listeners
+// Event Listeners
+function setupEventListeners() {
     loginForm.addEventListener('submit', handleLogin);
     logoutBtn.addEventListener('click', handleLogout);
     itemForm.addEventListener('submit', handleItemSubmit);
     cancelEditBtn.addEventListener('click', cancelEdit);
 }
 
-// Show authentication panel
+// Show/Hide Panels
 function showAuthPanel() {
     authContainer.style.display = 'block';
     adminContainer.style.display = 'none';
+    resetForm();
 }
 
-// Show admin panel
 function showAdminPanel() {
     authContainer.style.display = 'none';
     adminContainer.style.display = 'block';
 }
 
-// Handle login
+// Authentication Handlers
 async function handleLogin(e) {
     e.preventDefault();
     const email = document.getElementById('email').value;
@@ -98,20 +104,16 @@ async function handleLogin(e) {
     }
 }
 
-// Handle logout
 async function handleLogout() {
     try {
         await signOut(auth);
-        resetForm();
     } catch (error) {
         alert('Logout failed: ' + error.message);
     }
 }
 
-// Load items for the current user only
+// Item Management
 async function loadUserItems(userId) {
-    itemsList.innerHTML = '<tr><td colspan="4" class="text-center">Loading your items...</td></tr>';
-    
     try {
         const q = query(
             collection(db, 'menuItems'),
@@ -121,172 +123,131 @@ async function loadUserItems(userId) {
         
         const querySnapshot = await getDocs(q);
         
-        if (querySnapshot.empty) {
-            itemsList.innerHTML = '<tr><td colspan="4" class="text-center">You have no items yet</td></tr>';
-            return;
-        }
-        
-        itemsList.innerHTML = '';
+        itemsList.innerHTML = querySnapshot.empty 
+            ? '<tr><td colspan="4" class="text-center py-4">You have no menu items yet</td></tr>'
+            : '';
+            
         querySnapshot.forEach((doc) => {
             const item = doc.data();
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${item.name}</td>
-                <td>$${item.price.toFixed(2)}</td>
-                <td>${item.description || '-'}</td>
-                <td>
-                    <button class="btn btn-sm btn-warning edit-btn" data-id="${doc.id}">Edit</button>
-                    <button class="btn btn-sm btn-danger delete-btn" data-id="${doc.id}">Delete</button>
-                </td>
-            `;
-            itemsList.appendChild(row);
+            itemsList.appendChild(createItemRow(doc.id, item));
         });
         
-        // Add event listeners to edit and delete buttons
-        document.querySelectorAll('.edit-btn').forEach(btn => {
-            btn.addEventListener('click', () => editItem(btn.dataset.id));
-        });
-        
-        document.querySelectorAll('.delete-btn').forEach(btn => {
-            btn.addEventListener('click', () => deleteItem(btn.dataset.id));
-        });
     } catch (error) {
-        itemsList.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Error loading your items</td></tr>';
-        console.error('Error loading items: ', error);
+        itemsList.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-4">Error loading your items</td></tr>';
+        console.error('Error loading items:', error);
     }
 }
 
-// Handle item form submission
-function handleItemSubmit(e) {
+function createItemRow(id, item) {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+        <td>${item.name}</td>
+        <td>$${item.price.toFixed(2)}</td>
+        <td>${item.description || '-'}</td>
+        <td>
+            <button class="btn btn-sm btn-warning edit-btn me-2" data-id="${id}">Edit</button>
+            <button class="btn btn-sm btn-danger delete-btn" data-id="${id}">Delete</button>
+        </td>
+    `;
+    
+    row.querySelector('.edit-btn').addEventListener('click', () => editItem(id));
+    row.querySelector('.delete-btn').addEventListener('click', () => deleteItem(id));
+    
+    return row;
+}
+
+async function handleItemSubmit(e) {
     e.preventDefault();
     
-    const name = document.getElementById('item-name').value;
+    const name = document.getElementById('item-name').value.trim();
     const price = parseFloat(document.getElementById('item-price').value);
-    const description = document.getElementById('item-description').value;
+    const description = document.getElementById('item-description').value.trim();
     
     if (!name || isNaN(price)) {
-        alert('Name and price are required');
+        alert('Please provide at least name and price');
         return;
     }
     
-    if (isEditing) {
-        updateItem(itemIdInput.value, name, price, description);
-    } else {
-        addItem(name, price, description);
+    try {
+        if (isEditing) {
+            await updateItem(itemIdInput.value, name, price, description);
+        } else {
+            await addItem(name, price, description);
+        }
+        resetForm();
+        await loadUserItems(currentUser.uid);
+    } catch (error) {
+        console.error('Error saving item:', error);
+        alert('Error saving item: ' + error.message);
     }
 }
 
-// Add new item to Firestore (with user ID)
 async function addItem(name, price, description) {
-    try {
-        await saveItemToFirestore(null, name, price, description);
-        resetForm();
-        loadUserItems(currentUser.uid);
-    } catch (error) {
-        console.error('Error adding item: ', error);
-        alert('Error adding item: ' + error.message);
-    }
-}
-
-// Update existing item
-async function updateItem(id, name, price, description) {
-    try {
-        await saveItemToFirestore(id, name, price, description);
-        resetForm();
-        loadUserItems(currentUser.uid);
-    } catch (error) {
-        console.error('Error updating item: ', error);
-        alert('Error updating item: ' + error.message);
-    }
-}
-
-// Save item data to Firestore (with user reference)
-async function saveItemToFirestore(id, name, price, description) {
-    const itemData = {
+    await addDoc(collection(db, 'menuItems'), {
         name,
         price,
         description: description || null,
         userId: currentUser.uid,
+        createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
-    };
-    
-    if (id) {
-        // Update existing document
-        const docRef = doc(db, 'menuItems', id);
-        await updateDoc(docRef, itemData);
-    } else {
-        // Add new document
-        itemData.createdAt = serverTimestamp();
-        await addDoc(collection(db, 'menuItems'), itemData);
-    }
+    });
 }
 
-// Edit item
+async function updateItem(id, name, price, description) {
+    await updateDoc(doc(db, 'menuItems', id), {
+        name,
+        price,
+        description: description || null,
+        updatedAt: serverTimestamp()
+    });
+}
+
 async function editItem(id) {
     try {
         const docRef = doc(db, 'menuItems', id);
         const docSnap = await getDoc(docRef);
         
-        if (!docSnap.exists()) {
-            alert('Item not found');
+        if (!docSnap.exists() || docSnap.data().userId !== currentUser.uid) {
+            alert("You can only edit your own items");
             return;
         }
         
         const item = docSnap.data();
-        
-        // Verify the item belongs to current user
-        if (item.userId !== currentUser.uid) {
-            alert('You can only edit your own items');
-            return;
-        }
-        
-        document.getElementById('item-id').value = id;
+        itemIdInput.value = id;
         document.getElementById('item-name').value = item.name;
         document.getElementById('item-price').value = item.price;
         document.getElementById('item-description').value = item.description || '';
         
-        // Update UI for editing
         isEditing = true;
         formTitle.textContent = 'Edit Item';
         submitBtn.textContent = 'Update Item';
         cancelEditBtn.style.display = 'block';
-        
-        // Scroll to form
-        document.getElementById('item-form').scrollIntoView({ behavior: 'smooth' });
     } catch (error) {
-        console.error('Error getting item: ', error);
-        alert('Error getting item: ' + error.message);
+        console.error('Error editing item:', error);
+        alert('Error editing item: ' + error.message);
     }
 }
 
-// Delete item (with ownership check)
 async function deleteItem(id) {
     if (!confirm('Are you sure you want to delete this item?')) return;
     
     try {
-        // First verify the item belongs to current user
         const docRef = doc(db, 'menuItems', id);
         const docSnap = await getDoc(docRef);
         
         if (!docSnap.exists() || docSnap.data().userId !== currentUser.uid) {
-            alert('You can only delete your own items');
+            alert("You can only delete your own items");
             return;
         }
         
         await deleteDoc(docRef);
-        loadUserItems(currentUser.uid);
+        await loadUserItems(currentUser.uid);
     } catch (error) {
-        console.error('Error deleting item: ', error);
+        console.error('Error deleting item:', error);
         alert('Error deleting item: ' + error.message);
     }
 }
 
-// Cancel edit and reset form
-function cancelEdit() {
-    resetForm();
-}
-
-// Reset form to initial state
 function resetForm() {
     itemForm.reset();
     itemIdInput.value = '';
@@ -296,5 +257,5 @@ function resetForm() {
     cancelEditBtn.style.display = 'none';
 }
 
-// Initialize the app when DOM is loaded
+// Initialize App
 document.addEventListener('DOMContentLoaded', init);
