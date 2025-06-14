@@ -16,17 +16,18 @@ import {
     deleteDoc,
     query,
     where,
+    orderBy,
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
-// Firebase configuration
+// Firebase Configuration
 const firebaseConfig = {
-    apiKey: "AIzaSyDVszBM0A89MND9nnuLQyyfqEqUYgFvXG0",
-    authDomain: "fir-68576.firebaseapp.com",
-    projectId: "fir-68576",
-    storageBucket: "fir-68576.firebasestorage.app",
-    messagingSenderId: "974193542526",
-    appId: "1:974193542526:web:4f7679ff82a59f622c5f2f"
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_AUTH_DOMAIN",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_STORAGE_BUCKET",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
 };
 
 // Initialize Firebase
@@ -64,7 +65,7 @@ function setupAuthListener() {
             currentUser = user;
             userEmailDisplay.textContent = user.email;
             showAdminPanel();
-            loadUserItems(user.uid);
+            loadUserItems();
         } else {
             showAuthPanel();
         }
@@ -113,47 +114,55 @@ async function handleLogout() {
 }
 
 // Item Management
-async function loadUserItems(userId) {
+async function loadUserItems() {
+    if (!currentUser) return;
+    
+    itemsList.innerHTML = '<tr><td colspan="4" class="text-center py-4">Loading your items...</td></tr>';
+
     try {
         const q = query(
             collection(db, 'menuItems'),
-            where("userId", "==", userId),
+            where("userId", "==", currentUser.uid),
             orderBy("createdAt", "desc")
         );
         
         const querySnapshot = await getDocs(q);
         
-        itemsList.innerHTML = querySnapshot.empty 
-            ? '<tr><td colspan="4" class="text-center py-4">You have no menu items yet</td></tr>'
-            : '';
-            
+        itemsList.innerHTML = '';
+        
+        if (querySnapshot.empty) {
+            itemsList.innerHTML = '<tr><td colspan="4" class="text-center py-4">No items found. Add your first item!</td></tr>';
+            return;
+        }
+
         querySnapshot.forEach((doc) => {
             const item = doc.data();
-            itemsList.appendChild(createItemRow(doc.id, item));
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${item.name}</td>
+                <td>$${item.price.toFixed(2)}</td>
+                <td>${item.description || '-'}</td>
+                <td>
+                    <button class="btn btn-sm btn-warning edit-btn me-2" data-id="${doc.id}">Edit</button>
+                    <button class="btn btn-sm btn-danger delete-btn" data-id="${doc.id}">Delete</button>
+                </td>
+            `;
+            itemsList.appendChild(row);
+        });
+
+        // Add event listeners after creating rows
+        document.querySelectorAll('.edit-btn').forEach(btn => {
+            btn.addEventListener('click', () => editItem(btn.dataset.id));
         });
         
-    } catch (error) {
-        itemsList.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-4">Error loading your items</td></tr>';
-        console.error('Error loading items:', error);
-    }
-}
+        document.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.addEventListener('click', () => deleteItem(btn.dataset.id));
+        });
 
-function createItemRow(id, item) {
-    const row = document.createElement('tr');
-    row.innerHTML = `
-        <td>${item.name}</td>
-        <td>$${item.price.toFixed(2)}</td>
-        <td>${item.description || '-'}</td>
-        <td>
-            <button class="btn btn-sm btn-warning edit-btn me-2" data-id="${id}">Edit</button>
-            <button class="btn btn-sm btn-danger delete-btn" data-id="${id}">Delete</button>
-        </td>
-    `;
-    
-    row.querySelector('.edit-btn').addEventListener('click', () => editItem(id));
-    row.querySelector('.delete-btn').addEventListener('click', () => deleteItem(id));
-    
-    return row;
+    } catch (error) {
+        console.error("Error loading items: ", error);
+        itemsList.innerHTML = `<tr><td colspan="4" class="text-center text-danger py-4">Error loading items: ${error.message}</td></tr>`;
+    }
 }
 
 async function handleItemSubmit(e) {
@@ -175,7 +184,7 @@ async function handleItemSubmit(e) {
             await addItem(name, price, description);
         }
         resetForm();
-        await loadUserItems(currentUser.uid);
+        await loadUserItems();
     } catch (error) {
         console.error('Error saving item:', error);
         alert('Error saving item: ' + error.message);
@@ -183,6 +192,8 @@ async function handleItemSubmit(e) {
 }
 
 async function addItem(name, price, description) {
+    if (!currentUser) throw new Error("User not authenticated");
+    
     await addDoc(collection(db, 'menuItems'), {
         name,
         price,
@@ -194,6 +205,8 @@ async function addItem(name, price, description) {
 }
 
 async function updateItem(id, name, price, description) {
+    if (!currentUser) throw new Error("User not authenticated");
+    
     await updateDoc(doc(db, 'menuItems', id), {
         name,
         price,
@@ -207,12 +220,19 @@ async function editItem(id) {
         const docRef = doc(db, 'menuItems', id);
         const docSnap = await getDoc(docRef);
         
-        if (!docSnap.exists() || docSnap.data().userId !== currentUser.uid) {
-            alert("You can only edit your own items");
+        if (!docSnap.exists()) {
+            alert("Item not found");
             return;
         }
         
         const item = docSnap.data();
+        
+        // Verify ownership
+        if (item.userId !== currentUser.uid) {
+            alert("You can only edit your own items");
+            return;
+        }
+        
         itemIdInput.value = id;
         document.getElementById('item-name').value = item.name;
         document.getElementById('item-price').value = item.price;
@@ -235,13 +255,19 @@ async function deleteItem(id) {
         const docRef = doc(db, 'menuItems', id);
         const docSnap = await getDoc(docRef);
         
-        if (!docSnap.exists() || docSnap.data().userId !== currentUser.uid) {
+        if (!docSnap.exists()) {
+            alert("Item not found");
+            return;
+        }
+        
+        // Verify ownership
+        if (docSnap.data().userId !== currentUser.uid) {
             alert("You can only delete your own items");
             return;
         }
         
         await deleteDoc(docRef);
-        await loadUserItems(currentUser.uid);
+        await loadUserItems();
     } catch (error) {
         console.error('Error deleting item:', error);
         alert('Error deleting item: ' + error.message);
